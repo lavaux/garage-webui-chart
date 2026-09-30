@@ -14,6 +14,7 @@ jobs:
 
     permissions:
       contents: write   # upload the .tgz to the release
+      packages: write   # push the chart to ghcr.io
 
     steps:
       # The release event checks out the tag. The tag points at the
@@ -45,3 +46,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$TAG" dist/*.tgz --clobber
+
+      # The chart lands at oci://ghcr.io/<owner>/charts/garage-webui. OCI
+      # references must be lowercase, so the owner name is lowercased.
+      - name: Push the chart to the GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "$GH_TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
+          helm push dist/*.tgz "oci://ghcr.io/$owner/charts"

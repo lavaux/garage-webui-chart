@@ -85,4 +85,10 @@ make template   # render with default values
 make package    # lint and package into a .tgz
 ```
 
+Each release is also published as an OCI artifact on the GitHub Container Registry:
+
+```sh
+helm install webui oci://ghcr.io/lavaux/charts/garage-webui --version <version>
+```
+
 See `CLAUDE.md` for the release process.

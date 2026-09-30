@@ -12,7 +12,7 @@ make package     # lint + helm package → *.tgz (local test only)
 make clean       # remove *.tgz
 ```
 
-Releases are not made from the Makefile. semantic-release runs in `.github/workflows/release.yml` on pushes to `main` and `release/**`. It derives the version from Conventional Commits, and `build_tools/set-versions.js` writes it into `Chart.yaml`. It then commits, tags and publishes the GitHub release. The published release triggers `.github/workflows/package.yml`, which runs `helm package` and attaches the `.tgz` to the release.
+Releases are not made from the Makefile. semantic-release runs in `.github/workflows/release.yml` on pushes to `main` and `release/**`. It derives the version from Conventional Commits, and `build_tools/set-versions.js` writes it into `Chart.yaml`. It then commits, tags and publishes the GitHub release. The published release triggers `.github/workflows/package.yml`, which runs `helm package`, attaches the `.tgz` to the release and pushes it to `oci://ghcr.io/<owner>/charts`.
 
 ## Architecture
 
