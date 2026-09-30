@@ -1,0 +1,35 @@
+Garage Web UI is deployed as {{ include "garage-webui.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+
+Open it at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ $.Values.basePath }}/
+{{- end }}
+{{- else }}
+
+Reach it with a port-forward:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "garage-webui.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  then open http://127.0.0.1:{{ .Values.service.port }}{{ .Values.basePath }}/
+{{- end }}
+
+On first launch the UI shows a one-time registration screen for the owner
+account. Create it immediately: until then, anyone who can reach the UI can
+claim ownership.
+{{- if not (or .Values.garage.adminToken .Values.garage.existingSecret .Values.garageConfig.existingSecret) }}
+
+WARNING: no Garage admin token is configured (garage.adminToken,
+garage.existingSecret or garageConfig.existingSecret). The UI will not be able
+to talk to the Garage admin API.
+{{- end }}
+{{- if not .Values.persistence.enabled }}
+
+WARNING: persistence is disabled. User accounts and audit logs are stored in
+an emptyDir and are lost whenever the pod is recreated.
+{{- end }}
+{{- if and .Values.ingress.enabled (not .Values.ingress.annotations) }}
+
+NOTE: large uploads are streamed. If your ingress controller limits request
+bodies or buffers them (ingress-nginx does by default), set the annotations
+shown in values.yaml under ingress.annotations.
+{{- end }}

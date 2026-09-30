@@ -1,0 +1,171 @@
+{{- include "garage-webui.validate" . }}
+{{- $secretData := include "garage-webui.secretData" . | trim }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "garage-webui.fullname" . }}
+  labels:
+    {{- include "garage-webui.labels" . | nindent 4 }}
+spec:
+  # Sessions are held in memory and users.json lives on a RWO volume: one replica only.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "garage-webui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/secret: {{ $secretData | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "garage-webui.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "garage-webui.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: webui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ .Values.service.port | quote }}
+            - name: USERS_PATH
+              value: /data/users.json
+            - name: LOGS_PATH
+              value: /data/logs/app.log
+            - name: TMPDIR
+              value: /data/tmp
+            {{- if .Values.garageConfig.existingSecret }}
+            - name: CONFIG_PATH
+              value: /etc/garage.toml
+            {{- end }}
+            {{- with .Values.basePath }}
+            - name: BASE_PATH
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.garage.adminApiUrl }}
+            - name: API_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.garage.s3EndpointUrl }}
+            - name: S3_ENDPOINT_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.garage.s3Region }}
+            - name: S3_REGION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.garage.existingSecret }}
+            - name: API_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.garage.existingSecret }}
+                  key: {{ .Values.garage.existingSecretKey }}
+            {{- else if .Values.garage.adminToken }}
+            - name: API_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "garage-webui.secretName" . }}
+                  key: admin-token
+            {{- end }}
+            {{- if .Values.auth.existingSecret }}
+            - name: AUTH_USER_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.existingSecretKey }}
+            {{- else if .Values.auth.legacyUserPass }}
+            - name: AUTH_USER_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "garage-webui.secretName" . }}
+                  key: auth-user-pass
+            {{- end }}
+            {{- if .Values.google.enabled }}
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.google.existingSecret | default (include "garage-webui.secretName" .) }}
+                  key: {{ ternary .Values.google.clientIdKey "google-client-id" (ne .Values.google.existingSecret "") }}
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.google.existingSecret | default (include "garage-webui.secretName" .) }}
+                  key: {{ ternary .Values.google.clientSecretKey "google-client-secret" (ne .Values.google.existingSecret "") }}
+            - name: GOOGLE_ALLOWED_DOMAINS
+              value: {{ .Values.google.allowedDomains | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- include "garage-webui.probe" (dict "probe" . "basePath" $.Values.basePath) | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- include "garage-webui.probe" (dict "probe" . "basePath" $.Values.basePath) | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            {{- if .Values.garageConfig.existingSecret }}
+            - name: garage-config
+              mountPath: /etc/garage.toml
+              subPath: {{ .Values.garageConfig.key }}
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "garage-webui.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.garageConfig.existingSecret }}
+        - name: garage-config
+          secret:
+            secretName: {{ .Values.garageConfig.existingSecret }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

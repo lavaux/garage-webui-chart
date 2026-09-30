@@ -1,0 +1,7 @@
+.DS_Store
+.git/
+.claude/
+*.tgz
+*.log
+Makefile
+CLAUDE.md

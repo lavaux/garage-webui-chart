@@ -1,0 +1,156 @@
+# Default values for garage-webui.
+#
+# The chart always runs a single replica. The web UI keeps sessions in memory
+# and stores user accounts in a JSON file on the /data volume, so it cannot be
+# scaled horizontally.
+
+image:
+  repository: genebit/garage-webui
+  pullPolicy: IfNotPresent
+  # Defaults to the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Connection to an existing Garage cluster.
+garage:
+  # Garage admin API endpoint (API_BASE_URL).
+  adminApiUrl: "http://garage:3903"
+  # Garage S3 API endpoint (S3_ENDPOINT_URL).
+  s3EndpointUrl: "http://garage:3900"
+  # S3 region (S3_REGION). Empty means the value from garage.toml, or "garage".
+  s3Region: ""
+  # Garage admin token (API_ADMIN_KEY). Stored in a Secret created by the chart.
+  # Leave empty when using existingSecret or a mounted garage.toml.
+  adminToken: ""
+  # Name of an existing Secret holding the admin token. Takes precedence over adminToken.
+  existingSecret: ""
+  existingSecretKey: admin-token
+
+# Optional garage.toml mounted at /etc/garage.toml. The web UI reads the admin
+# token and endpoints from it when the variables above are empty. The file
+# contains rpc_secret, so it is read from a Secret, never from a ConfigMap.
+garageConfig:
+  existingSecret: ""
+  key: garage.toml
+
+# Serve the UI under a path prefix (BASE_PATH), e.g. "/webui". No trailing slash.
+basePath: ""
+
+auth:
+  # Legacy single-user login (AUTH_USER_PASS), "username:bcrypt_hash".
+  # Only honoured while no user is registered. Generate with:
+  #   htpasswd -nbBC 10 USER PASSWORD
+  legacyUserPass: ""
+  # Existing Secret holding the value above. Takes precedence over legacyUserPass.
+  existingSecret: ""
+  existingSecretKey: auth-user-pass
+
+# Optional Google sign-in (OpenID Connect).
+google:
+  enabled: false
+  clientId: ""
+  clientSecret: ""
+  # Existing Secret with keys client-id and client-secret. Takes precedence.
+  existingSecret: ""
+  clientIdKey: client-id
+  clientSecretKey: client-secret
+  # Comma-separated hosted-domain allowlist (GOOGLE_ALLOWED_DOMAINS). Required
+  # when enabled: the upstream default is a specific university's domains.
+  allowedDomains: ""
+
+# Extra environment variables for the container.
+extraEnv: []
+# - name: S3_REGION
+#   value: garage
+
+extraVolumes: []
+extraVolumeMounts: []
+
+# Holds users.json, the audit log and the temp directory.
+persistence:
+  enabled: true
+  # Use an existing PVC instead of creating one.
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+# The image is built FROM scratch and has no USER, so the chart picks a
+# non-root UID. fsGroup makes the /data volume writable for it.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 3909
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  # Uploads are streamed to Garage. With ingress-nginx, lift the body size limit
+  # and disable request buffering, otherwise large uploads fail with HTTP 413:
+  #   nginx.ingress.kubernetes.io/proxy-body-size: "0"
+  #   nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  annotations: {}
+  hosts:
+    - host: garage-webui.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: garage-webui-tls
+  #    hosts:
+  #      - garage-webui.local
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 30
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  periodSeconds: 10
+
+resources: {}
+#  requests:
+#    cpu: 50m
+#    memory: 64Mi
+#  limits:
+#    memory: 256Mi
+
+# The image is only published for linux/amd64.
+nodeSelector:
+  kubernetes.io/arch: amd64
+tolerations: []
+affinity: {}
