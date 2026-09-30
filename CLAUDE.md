@@ -7,16 +7,12 @@ This file provides guidance to Claude Code when working with code in this reposi
 ```bash
 make lint        # helm lint
 make template    # render templates to stdout with default values
-make package     # lint + helm package → *.tgz
-make bump-patch  # increment patch version in Chart.yaml and commit
-make bump-minor  # increment minor version in Chart.yaml and commit
-make bump-major  # increment major version in Chart.yaml and commit
-make release     # package + git tag + push + Forgejo release asset upload (requires FORGEJO_TOKEN)
+make validate    # helm template piped into kubeconform -strict
+make package     # lint + helm package → *.tgz (local test only)
 make clean       # remove *.tgz
 ```
 
-Validate the rendered output with
-`helm template t . | docker run --rm -i ghcr.io/yannh/kubeconform -strict -summary -`.
+Releases are not made from the Makefile. semantic-release runs in `.github/workflows/release.yml` on pushes to `main` and `release/**`. It derives the version from Conventional Commits, and `build_tools/set-versions.js` writes it into `Chart.yaml`. It then commits, tags and publishes the GitHub release. The published release triggers `.github/workflows/package.yml`, which runs `helm package` and attaches the `.tgz` to the release.
 
 ## Architecture
 

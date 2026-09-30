@@ -5,3 +5,12 @@
 *.log
 Makefile
 CLAUDE.md
+.github/
+node_modules/
+build_tools/
+package.json
+package-lock.json
+.releaserc.json
+.releaser.json
+VERSION.txt
+CHANGELOG.md
