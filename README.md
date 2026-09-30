@@ -6,22 +6,32 @@ The chart deploys only the web UI. It connects to a Garage cluster that already 
 
 ## Install
 
+The chart is published as an OCI artifact on the GitHub Container Registry at `oci://ghcr.io/lavaux/charts/garage-webui`. Installing it requires Helm 3.8 or later and Kubernetes 1.19 or later.
+
 Create a Secret with the Garage admin token (`admin.admin_token` in `garage.toml`):
 
 ```sh
 kubectl create secret generic garage-admin --from-literal=admin-token='YOUR_ADMIN_TOKEN'
 ```
 
-Then install the chart. It points at the Garage Service:
+Then install the chart. It points at the Garage Service. Pick `<version>` from the [releases page](https://github.com/lavaux/garage-webui-chart/releases), without the leading `v`:
 
 ```sh
-helm install webui . \
+helm install webui oci://ghcr.io/lavaux/charts/garage-webui --version <version> \
   --set garage.adminApiUrl=http://garage.garage.svc:3903 \
   --set garage.s3EndpointUrl=http://garage.garage.svc:3900 \
   --set garage.existingSecret=garage-admin
 ```
 
-Open the UI and create the owner account right away. On first launch the UI shows a one-time registration screen, and whoever reaches it first becomes the owner.
+Open the UI. If you enabled an Ingress (`ingress.enabled`), browse to the host you configured, followed by `basePath` if you set one. Otherwise the Service is only reachable inside the cluster, so forward its port to your machine:
+
+```sh
+kubectl port-forward svc/webui-garage-webui 3909:3909
+```
+
+Then browse to `http://127.0.0.1:3909/`, again followed by `basePath` if you set one. The Service is named `<release>-garage-webui`, and `helm install` prints the exact command for your release.
+
+Create the owner account right away. On first launch the UI shows a one-time registration screen, and whoever reaches it first becomes the owner.
 
 ## Connecting to Garage
 
@@ -36,6 +46,9 @@ The web UI can learn how to reach Garage in two ways. You can combine them, and 
 | --- | --- | --- |
 | `image.repository` | `genebit/garage-webui` | Image. Only `linux/amd64` is published. |
 | `image.tag` | chart `appVersion` (`1.1.0`) | Image tag. |
+| `image.pullPolicy` | `IfNotPresent` | Image pull policy. |
+| `imagePullSecrets` | `[]` | Pull secrets for a private registry or mirror. |
+| `nameOverride` / `fullnameOverride` | `""` / `""` | Override the chart name or the full resource name. |
 | `garage.adminApiUrl` | `http://garage:3903` | Garage admin API (`API_BASE_URL`). |
 | `garage.s3EndpointUrl` | `http://garage:3900` | Garage S3 API (`S3_ENDPOINT_URL`). |
 | `garage.s3Region` | `""` | S3 region (`S3_REGION`). Empty means the value from `garage.toml`, or `garage`. |
@@ -52,12 +65,17 @@ The web UI can learn how to reach Garage in two ways. You can combine them, and 
 | `persistence.enabled` | `true` | PVC for `/data`. When disabled, an `emptyDir` is used. |
 | `persistence.existingClaim` | `""` | Reuse an existing PVC. |
 | `persistence.size` / `storageClass` / `accessModes` | `1Gi` / `""` / `[ReadWriteOnce]` | PVC settings. |
-| `service.type` / `service.port` | `ClusterIP` / `3909` | Service. |
+| `persistence.annotations` | `{}` | Extra PVC annotations. `helm.sh/resource-policy: keep` is always set. |
+| `service.type` / `service.port` | `ClusterIP` / `3909` | Service. The port is also the container port (`PORT`). |
+| `service.annotations` | `{}` | Service annotations. |
 | `ingress.*` | disabled | Standard `networking.k8s.io/v1` Ingress (`className`, `annotations`, `hosts`, `tls`). |
+| `serviceAccount.create` / `automount` | `true` / `false` | Create a ServiceAccount. Its token is not mounted by default. |
+| `serviceAccount.name` / `annotations` | `""` / `{}` | ServiceAccount name and annotations. The name defaults to the full name, or to `default` when `create` is false. |
 | `podSecurityContext` | non-root UID/GID/fsGroup 65532 | Pod security context. |
 | `securityContext` | read-only rootfs, no capabilities | Container security context. |
 | `nodeSelector` | `kubernetes.io/arch: amd64` | Keeps the pod on nodes that can run the image. |
 | `extraEnv`, `extraVolumes`, `extraVolumeMounts` | `[]` | Escape hatches. |
+| `livenessProbe` / `readinessProbe` | HTTP `GET /` on port `http` | Probe specs. `basePath` is prepended to `httpGet.path`. |
 | `resources`, `tolerations`, `affinity`, `podAnnotations`, `podLabels` | empty | Usual pod settings. |
 
 ## Behaviour and caveats
@@ -82,13 +100,14 @@ The web UI can learn how to reach Garage in two ways. You can combine them, and 
 ```sh
 make lint       # helm lint
 make template   # render with default values
+make validate   # render and check with kubeconform -strict (needs Docker)
 make package    # lint and package into a .tgz
 ```
 
-Each release is also published as an OCI artifact on the GitHub Container Registry:
-
-```sh
-helm install webui oci://ghcr.io/lavaux/charts/garage-webui --version <version>
-```
+To install from a clone instead of the registry, replace the OCI reference with `.`, as in `helm install webui . --set ...`.
 
 See `CLAUDE.md` for the release process.
+
+## License
+
+This chart is released under the MIT License. See [LICENSE](LICENSE). The license covers the chart only. The Garage Web UI image it deploys is distributed under its own upstream license.
